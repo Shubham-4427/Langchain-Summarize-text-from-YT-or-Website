@@ -2,7 +2,11 @@ import re
 import validators
 import streamlit as st
 
-from langchain.schema import Document
+from langchain_core.documents import Document
+from langchain.prompts import PromptTemplate
+from langchain_groq import ChatGroq
+from langchain.chains.summarize import load_summarize_chain
+
 from langchain.prompts import PromptTemplate
 from langchain_groq import ChatGroq
 from langchain.chains.summarize import load_summarize_chain
