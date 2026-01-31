@@ -2,16 +2,18 @@ import re
 import validators
 import streamlit as st
 
+# -------- LangChain Core (Modern & Stable) --------
 from langchain_core.documents import Document
 from langchain_core.prompts import PromptTemplate
-from langchain_groq import ChatGroq
-from langchain.chains.summarize import load_summarize_chain
+from langchain_core.output_parsers import StrOutputParser
 
-from langchain.prompts import PromptTemplate
+# -------- LLM --------
 from langchain_groq import ChatGroq
-from langchain.chains.summarize import load_summarize_chain
+
+# -------- Loaders --------
 from langchain_community.document_loaders import UnstructuredURLLoader
 
+# -------- YouTube Transcript API --------
 from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound
 
@@ -22,8 +24,8 @@ st.set_page_config(
     page_icon="🦜"
 )
 
-st.title("🦜 LangChain: Summarize Text From YouTube or Website")
-st.subheader("Summarize any public URL")
+st.title("🦜 YouTube & Website Summarizer")
+st.subheader("Summarize any public YouTube video or website")
 
 
 # -------------------- SIDEBAR --------------------
@@ -33,52 +35,45 @@ with st.sidebar:
 url = st.text_input("Enter YouTube or Website URL", label_visibility="collapsed")
 
 
-# -------------------- LLM (SUPPORTED GROQ MODEL) --------------------
+# -------------------- LLM CONFIG --------------------
 llm = ChatGroq(
-    model="llama-3.1-8b-instant",   # ✅ text-generation model
+    model="llama-3.1-8b-instant",   # ✅ supported Groq text model
     groq_api_key=groq_api_key,
     temperature=0
 )
 
 
 # -------------------- PROMPT --------------------
-prompt_template = """
-Provide a clear and concise summary of the following content in about 300 words.
+prompt = PromptTemplate.from_template(
+    """
+Provide a clear, well-structured summary of the following content
+in about 300 words.
 
 {text}
 """
-
-prompt = PromptTemplate(
-    template=prompt_template,
-    input_variables=["text"]
 )
 
 
-# -------------------- YOUTUBE TRANSCRIPT LOADER (FOR YOUR API VERSION) --------------------
+# -------------------- YOUTUBE TRANSCRIPT LOADER --------------------
 def load_youtube_transcript(video_url: str):
-    """
-    Works with youtube-transcript-api versions where
-    list() and fetch() are INSTANCE methods.
-    """
     match = re.search(r"(?:v=|youtu\.be/)([^&?/]+)", video_url)
     if not match:
         raise ValueError("Invalid YouTube URL")
 
     video_id = match.group(1)
-
-    api = YouTubeTranscriptApi()  # IMPORTANT: instance required
+    api = YouTubeTranscriptApi()  # instance REQUIRED
 
     try:
         transcript_list = api.list(video_id)
 
-        # Prefer English if available, else fall back to first available
         try:
             transcript = transcript_list.find_transcript(["en"]).fetch()
         except NoTranscriptFound:
-            # Fallback to any available transcript
-            # (generated or manually created)
-            keys = list(transcript_list._manually_created_transcripts.keys()) \
-                   or list(transcript_list._generated_transcripts.keys())
+            # fallback to any available transcript
+            keys = (
+                list(transcript_list._manually_created_transcripts.keys())
+                or list(transcript_list._generated_transcripts.keys())
+            )
             if not keys:
                 raise NoTranscriptFound(video_id)
             transcript = transcript_list.find_transcript(keys).fetch()
@@ -90,6 +85,13 @@ def load_youtube_transcript(video_url: str):
 
     text = " ".join(item.text for item in transcript)
     return [Document(page_content=text)]
+
+
+# -------------------- LCEL SUMMARIZATION --------------------
+def summarize_documents(docs):
+    combined_text = "\n\n".join(doc.page_content for doc in docs)
+    chain = prompt | llm | StrOutputParser()
+    return chain.invoke({"text": combined_text})
 
 
 # -------------------- BUTTON ACTION --------------------
@@ -118,17 +120,11 @@ if st.button("Summarize Content"):
                     st.error("No content could be extracted from the URL")
                     st.stop()
 
-                # -------- SUMMARIZATION --------
-                chain = load_summarize_chain(
-                    llm=llm,
-                    chain_type="stuff",
-                    prompt=prompt
-                )
-
-                result = chain.invoke({"input_documents": docs})
+                # -------- SUMMARIZE --------
+                summary = summarize_documents(docs)
 
                 st.success("Summary generated successfully!")
-                st.write(result["output_text"])
+                st.write(summary)
 
         except Exception as e:
             st.exception(e)
