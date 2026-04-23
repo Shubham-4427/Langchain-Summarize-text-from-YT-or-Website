@@ -27,6 +27,3 @@ The app extracts text reliably (without `pytube`), processes it using modern Lan
 - **Unstructured** – Website content parsing
 
 ---
-
-## 📂 Project Structure
-
